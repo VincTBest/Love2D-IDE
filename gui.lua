@@ -283,7 +283,7 @@ function draw_gui()
         local debugTitle = love.graphics.newText(fonts.default["18"], "loveYourGUI")
         love.graphics.draw(debugTitle, 8, 8)
 
-        local debugText = love.graphics.newText(fonts.default["14"], "Version "+version+"\nBy VincTBest")
+        local debugText = love.graphics.newText(fonts.default["14"], "Version "..version.."\nBy VincTBest")
         love.graphics.draw(debugText, 8, 8+22)
     end
 end

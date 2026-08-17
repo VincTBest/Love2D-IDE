@@ -1,8 +1,8 @@
--- Love2D GUI Library
+-- loveYourGUI - Love2D GUI Library
 
 -- Settings
 local debugMode = false
-local version = "0.0.1"
+local version = "0.0.2"
 
 -- Fonts
 fonts = {}
@@ -17,6 +17,24 @@ function loadFont(name, path, sizes)
     end
 end
 
+function getText(font, size, text)
+    local font = fonts[font][tostring(size)]
+    local drawable = love.graphics.newText(font, text)
+    return drawable
+end
+
+function drawText(font, size, text, x, y)
+    local drawable
+    if font and not x and not y then -- drawText(drawable, x, y)
+        drawable = font
+        x = size
+        y = text
+    else
+        drawable = getText(font, size, text)
+    end
+    love.graphics.draw(drawable, x, y)
+end
+
 -- UUID
 local random = math.random
 local function gen_uuid()
@@ -27,27 +45,49 @@ local function gen_uuid()
     end)
 end
 
--- Helper
+-- Helpers
+local dummyRoot
+
 local function getDummyRoot()
-    return create_widget(
-        0, 0, 0, 0, true, function(widget)
+    if not dummyRoot then
+        dummyRoot = create_widget(0, 0, 0, 0, false, function(widget)
+            widget.extra.root = false
             widget.doInGlobal.draw = false
             widget.visible = false
-            widget.remove = function () end -- Make this widget unremovable
+            widget.remove = function() end
+            widget.radius = nil
+            widget.margin = nil
 
-            widget.update = function ()
+            function widget.update()
                 local w, h = love.window.getMode()
                 widget.size.x = w
                 widget.size.y = h
-                widget.children = {}
             end
-            return widget
         end,
         function (widget)
             widget.extra.root = false
             return widget
-        end
-    )
+        end)
+    end
+
+    return dummyRoot
+end
+
+function setColFT(table)
+    love.graphics.setColor(table[1], table[2], table[3], table[4] or 1)
+end
+
+function findCenter(x, y, w1, h1, w2, h2)
+    local nX = math.floor(x + (w1 - w2) / 2)
+    local nY = math.floor(y + (h1 - h2) / 2)
+    
+    return nX, nY
+end
+
+local tick = 0
+
+function clamp(x, min, max)
+    return math.min(math.max(x, min), max)
 end
 
 -- Widgets
@@ -68,7 +108,8 @@ function create_widget(x, y, xSize, ySize, addToGlobal, init, eInit)
         uuid = gen_uuid(), -- Unique Identifier
         doInGlobal = {
             draw = true, -- If false, then widget.do_draw will not be called in draw_widgets.
-            update = true -- If false, then widget.do_update will not be called in update_widgets.
+            update = true, -- If false, then widget.do_update will not be called in update_widgets.
+            perfectCornerRadius = true, -- If true, then the widget will update it's corner radius (widget.radius) to widget.parent.radius - widget.margin on every 10th frame.
         },
         extra = {
             root = true -- When true, widget.parent will be set to getDummyRoot().
@@ -88,13 +129,35 @@ function create_widget(x, y, xSize, ySize, addToGlobal, init, eInit)
     -- For the programmer to override.
     function widget.cleanup() end
     function widget.update() end
+    function widget.update30() end -- 30fps update ( tick % 30 == 0 or tick == 0 )
+    function widget.update10() end -- 10fps update ( tick % 10 == 0 or tick == 0 )
     function widget.draw() end
 
     -- Regular functions.
     function widget.add(c_x, c_y, c_xSize, c_ySize, c_init)
-        local child = create_widget(c_x, c_y, c_xSize, c_ySize, false, c_init)
+        local child
+
+        if c_x and not c_y then
+            child = c_x
+            widgets[child.uuid] = nil
+        else
+            child = create_widget(
+                c_x, c_y,
+                c_xSize, c_ySize,
+                false,
+                c_init
+            )
+        end
+
+        child.extra.root = false
         child.parent = widget
+        
+        local x, y = widget.getContentPos()
+        child.pos.x = child.pos.x + (x - widget.pos.x)
+        child.pos.y = child.pos.y + (y - widget.pos.y)
+
         table.insert(widget.children, child)
+
         return child
     end
 
@@ -144,6 +207,52 @@ function create_widget(x, y, xSize, ySize, addToGlobal, init, eInit)
         widget.size.expand = expansions
     end
 
+    function widget.getPos()
+        if widget.parent then
+            local px, py = widget.parent.getPos()
+            return px + widget.pos.x, py + widget.pos.y
+        end
+
+        return widget.pos.x, widget.pos.y
+    end
+
+    function widget.getContentPos()
+        local x, y = widget.getPos()
+
+        local current = widget
+
+        while current do
+            local margin = current.margin or 0
+
+            x = x + margin
+            y = y + margin
+
+            current = current.parent
+        end
+
+        return x, y
+    end
+
+    function widget.getSize()
+        local w, h = widget.size.x, widget.size.y
+        return w, h
+    end
+
+    function widget.getContentSize()
+        local w, h = widget.getSize()
+        local margin = ((widget.margin or 0) * 2)
+        return w - margin, h - margin
+    end
+
+    function widget.configure(table)
+        local newWidget = table
+        for k, v in widget do
+            if not newWidget[k] then
+                newWidget[k] = v -- Keeps old unchanged values
+            end
+        end
+    end
+
     -- Do not call.
     function widget.do_draw()
         if widget.visible then
@@ -160,6 +269,18 @@ function create_widget(x, y, xSize, ySize, addToGlobal, init, eInit)
     function widget.do_update()
         if widget.enabled then
             widget.update()
+            
+            if tick % 30 == 0 or tick == 0 then
+                widget.update30()
+            end
+            if tick % 10 == 0 or tick == 0 then
+                widget.update10()
+                if widget.doInGlobal.perfectCornerRadius then
+                    widget.do_perfectCornerRadius()
+                end
+            end
+
+            widget.do_anchorAdjust()
             for i=1,#widget.children do
                 local child = widget.children[i]
                 if child.doInGlobal.update then
@@ -167,7 +288,6 @@ function create_widget(x, y, xSize, ySize, addToGlobal, init, eInit)
                 end
             end
         end
-        widget.do_anchorAdjust()
     end
 
     function widget.do_anchorAdjust()
@@ -242,6 +362,17 @@ function create_widget(x, y, xSize, ySize, addToGlobal, init, eInit)
         end
     end
 
+    function widget.do_perfectCornerRadius()
+        local w, h = widget.getContentSize()
+        if widget.parent and widget.parent.radius and widget.parent.margin then
+            local newRad = clamp(widget.parent.radius - widget.margin, 0, math.min(h/2, w/2)) -- Perfect corner radius
+            if newRad == widget.radius then
+                widget.parent.radius = newRad + widget.margin
+            end
+            widget.radius = newRad
+        end
+    end
+
     if addToGlobal == nil then
         addToGlobal = true
     end
@@ -290,6 +421,7 @@ end
 
 function update_gui()
     update_widgets()
+    tick = tick + 1
 end
 
 function love.keypressed( key, scancode, isrepeat )
@@ -300,6 +432,18 @@ function love.keypressed( key, scancode, isrepeat )
     end
 end
 
+function love.resize(w, h)
+    windowW = w
+    windowH = h
+
+    if dummyRoot then
+        dummyRoot.size.x = w
+        dummyRoot.size.y = h
+    end
+
+    update_gui()
+end
+
 loadFont("default", "gui/fonts/default/BricolageGrotesque.ttf")
 
 -- Panel
@@ -307,17 +451,53 @@ loadFont("default", "gui/fonts/default/BricolageGrotesque.ttf")
 function create_panel(x, y, w, h)
     return create_widget(x, y, w, h, true, function(widget)
         widget.margin = 14
-        widget.radius = 6
+        widget.radius = 8
 
         local c = .9
         widget.color = {c, c, c, 1}
 
         function widget.draw()
-            love.graphics.setColor(widget.color[1], widget.color[2], widget.color[3], widget.color[4])
-            local x1, y1 = widget.pos.x + widget.margin, widget.pos.y + widget.margin
-            local x2, y2 = widget.size.x - widget.margin * 2, widget.size.y - widget.margin * 2
-            love.graphics.rectangle("fill", x1, y1, x2, y2, widget.radius)
-            love.graphics.rectangle("line", x1, y1, x2, y2, widget.radius)
+            local x, y = widget.getContentPos()
+            local w, h = widget.getContentSize()
+
+            setColFT(widget.color)
+            love.graphics.rectangle("fill", x, y, w, h, widget.radius)
+
+            love.graphics.rectangle("line", x, y, w, h, widget.radius)
+        end
+
+        return widget
+    end)
+end
+
+function create_button(x, y, w, h, text)
+    return create_widget(x, y, w, h, true, function(widget)
+        widget.margin = 4
+        widget.radius = 6
+
+        widget.label = {
+            color = {.96, .96, .96, 1},
+            text = text or "Hello, world!",
+        }
+
+        widget.color = {0.235, 0.416, 0.78, 1}
+        widget.oColor = {0.161, 0.329, 0.761, 1}
+
+        function widget.draw()
+            local x, y = widget.getContentPos()
+            local w, h = widget.getContentSize()
+
+            setColFT(widget.color)
+            love.graphics.rectangle("fill", x, y, w, h, widget.radius)
+
+            setColFT(widget.oColor)
+            love.graphics.rectangle("line", x, y, w, h, widget.radius)
+
+            setColFT(widget.label.color)
+            local text = getText("default", 20, widget.label.text)
+            local tW, tH = text:getDimensions()
+            local textX, textY = findCenter(x, y, w, h, tW, tH)
+            drawText(text, textX, textY)
         end
 
         return widget

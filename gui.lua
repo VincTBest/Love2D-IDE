@@ -90,6 +90,10 @@ function clamp(x, min, max)
     return math.min(math.max(x, min), max)
 end
 
+function pointInRect(px, py, rx, ry, width, height)
+    return px >= rx and px <= rx + width and py >= ry and py <= ry + height
+end
+
 -- Widgets
 local widgets = {}
 
@@ -110,6 +114,8 @@ function create_widget(x, y, xSize, ySize, addToGlobal, init, eInit)
             draw = true, -- If false, then widget.do_draw will not be called in draw_widgets.
             update = true, -- If false, then widget.do_update will not be called in update_widgets.
             perfectCornerRadius = true, -- If true, then the widget will update it's corner radius (widget.radius) to widget.parent.radius - widget.margin on every 10th frame.
+            mousePress = true, -- Will not run widget.mousePressed if false.
+            mouseRelease = true, -- Will not run widget.mouseReleased if false.
         },
         extra = {
             root = true -- When true, widget.parent will be set to getDummyRoot().
@@ -131,6 +137,8 @@ function create_widget(x, y, xSize, ySize, addToGlobal, init, eInit)
     function widget.update() end
     function widget.update30() end -- 30fps update ( tick % 30 == 0 or tick == 0 )
     function widget.update10() end -- 10fps update ( tick % 10 == 0 or tick == 0 )
+    function widget.mousePressed(_x, _y, _button) end
+    function widget.mouseReleased(_x, _y, _button) end
     function widget.draw() end
 
     -- Regular functions.
@@ -373,6 +381,60 @@ function create_widget(x, y, xSize, ySize, addToGlobal, init, eInit)
         end
     end
 
+    function widget.do_mousePressed(x, y, button)
+        if not widget.enabled or not widget.visible then
+            return false
+        end
+
+        -- Check children first so they get priority over their parent.
+        for i = #widget.children, 1, -1 do
+            local child = widget.children[i]
+
+            if child.doInGlobal.mousePress then
+                if child.do_mousePressed(x, y, button) then
+                    return true
+                end
+            end
+        end
+
+        local wx, wy = widget.getContentPos()
+        local ww, wh = widget.getContentSize()
+
+        if pointInRect(x, y, wx, wy, ww, wh) then
+            widget.mousePressed(x, y, button)
+            return true
+        end
+
+        return false
+    end
+
+    function widget.do_mouseReleased(x, y, button)
+        if not widget.enabled or not widget.visible then
+            return false
+        end
+
+        -- Children first.
+        for i = #widget.children, 1, -1 do
+            local child = widget.children[i]
+
+            if child.doInGlobal.mouseRelease then
+                if child.do_mouseReleased(x, y, button) then
+                    return true
+                end
+            end
+        end
+
+        local wx, wy = widget.getContentPos()
+        local ww, wh = widget.getContentSize()
+
+        if pointInRect(x, y, wx, wy, ww, wh) then
+            widget.mouseReleased(x, y, button)
+            return true
+        end
+
+        return false
+    end
+
     if addToGlobal == nil then
         addToGlobal = true
     end
@@ -444,6 +506,30 @@ function love.resize(w, h)
     update_gui()
 end
 
+function love.mousepressed( x, y, button, istouch, presses )
+    for _, widget in pairs(widgets) do
+        if widget.enabled and widget.doInGlobal.mousePress then
+            local wx, wy = widget.getContentPos()
+            local ww, wh = widget.getContentSize()
+            if pointInRect(x, y, wx, wy, ww, wh) then
+                widget.do_mousePressed(x, y, button)
+            end
+        end
+    end
+end
+
+function love.mousereleased( x, y, button, istouch, presses )
+    for _, widget in pairs(widgets) do
+        if widget.enabled and widget.doInGlobal.mouseRelease then
+            local wx, wy = widget.getContentPos()
+            local ww, wh = widget.getContentSize()
+            if pointInRect(x, y, wx, wy, ww, wh) then
+                widget.do_mouseReleased(x, y, button)
+            end
+        end
+    end
+end
+
 loadFont("default", "gui/fonts/default/BricolageGrotesque.ttf")
 
 -- Panel
@@ -498,6 +584,14 @@ function create_button(x, y, w, h, text)
             local tW, tH = text:getDimensions()
             local textX, textY = findCenter(x, y, w, h, tW, tH)
             drawText(text, textX, textY)
+        end
+
+        function widget.mousePressed(_x, _y, _button)
+            widget.label.color = {1,0,0,1}
+        end
+
+        function widget.mouseReleased(_x, _y, _button)
+            widget.label.color = {0,0,1,1}
         end
 
         return widget

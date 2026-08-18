@@ -486,7 +486,7 @@ function update_gui()
     tick = tick + 1
 end
 
-function love.keypressed( key, scancode, isrepeat )
+function keypressed_gui( key, scancode, isrepeat )
     if key == "f11" then
         love.window.setFullscreen(not love.window.getFullscreen())
     elseif key == "f12" then
@@ -494,7 +494,7 @@ function love.keypressed( key, scancode, isrepeat )
     end
 end
 
-function love.resize(w, h)
+function resize_gui(w, h)
     windowW = w
     windowH = h
 
@@ -506,7 +506,7 @@ function love.resize(w, h)
     update_gui()
 end
 
-function love.mousepressed( x, y, button, istouch, presses )
+function mousepressed_gui( x, y, button, istouch, presses )
     for _, widget in pairs(widgets) do
         if widget.enabled and widget.doInGlobal.mousePress then
             local wx, wy = widget.getContentPos()
@@ -518,7 +518,7 @@ function love.mousepressed( x, y, button, istouch, presses )
     end
 end
 
-function love.mousereleased( x, y, button, istouch, presses )
+function mousereleased_gui( x, y, button, istouch, presses )
     for _, widget in pairs(widgets) do
         if widget.enabled and widget.doInGlobal.mouseRelease then
             local wx, wy = widget.getContentPos()

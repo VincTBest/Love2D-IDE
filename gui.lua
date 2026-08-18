@@ -126,6 +126,7 @@ end
 function nilFunc() end
 
 -- Widgets
+local selected = nil
 local widgets = {}
 
 function create_widget(x, y, xSize, ySize, addToGlobal, init, eInit)
@@ -190,10 +191,6 @@ function create_widget(x, y, xSize, ySize, addToGlobal, init, eInit)
 
         child.extra.root = false
         child.parent = widget
-        
-        local x, y = widget.getContentPos()
-        child.pos.x = child.pos.x + (x - widget.pos.x)
-        child.pos.y = child.pos.y + (y - widget.pos.y)
 
         table.insert(widget.children, child)
 
@@ -293,6 +290,19 @@ function create_widget(x, y, xSize, ySize, addToGlobal, init, eInit)
         widget = newWidget
     end
 
+    function widget.selectMe()
+        selected = widget.uuid
+    end
+
+    function widget.unselectMe()
+        selected = nil
+    end
+
+    function widget.isSelected()
+        if not selected then return false end
+        return selected == widget.uuid
+    end
+
     -- Do not call.
     function widget.do_draw()
         if widget.visible then
@@ -335,57 +345,59 @@ function create_widget(x, y, xSize, ySize, addToGlobal, init, eInit)
     end
 
     function widget.do_anchorAdjust()
-        -- Fallback to window dimensions if the widget somehow has no parent
         local minX, minY = 0, 0
         local maxX, maxY = love.window.getMode()
-        
+
         if widget.parent then
-            minX, minY = widget.parent.pos.x, widget.parent.pos.y
-            maxX, maxY = minX + widget.parent.size.x, minY + widget.parent.size.y
+            minX, minY = widget.parent.getContentPos()
+            local parentW, parentH = widget.parent.getContentSize()
+
+            maxX = minX + parentW
+            maxY = minY + parentH
         end
 
         -- Anchor
         local anchor = widget.pos.anchor
+
         if anchor then
-            -- X
             if anchor.x == -1 then
-                widget.pos.x = minX
+                widget.pos.x = 0
             elseif anchor.x == 0 then
-                widget.pos.x = minX + (maxX - minX) / 2 - widget.size.x / 2
+                widget.pos.x = (maxX - minX) / 2 - widget.size.x / 2
             elseif anchor.x == 1 then
-                widget.pos.x = maxX - widget.size.x
+                widget.pos.x = (maxX - minX) - widget.size.x
             end
 
-            -- Y
             if anchor.y == -1 then
-                widget.pos.y = minY
+                widget.pos.y = 0
             elseif anchor.y == 0 then
-                widget.pos.y = minY + (maxY - minY) / 2 - widget.size.y / 2
+                widget.pos.y = (maxY - minY) / 2 - widget.size.y / 2
             elseif anchor.y == 1 then
-                widget.pos.y = maxY - widget.size.y
+                widget.pos.y = (maxY - minY) - widget.size.y
             end
         end
 
         -- Expand
         local expansions = widget.size.expand
+
         if expansions and #expansions > 0 then
             local left, right, top, bottom = nil, nil, nil, nil
 
-            -- Identify which edges the widget needs to stretch to
             for i = 1, #expansions do
                 local n = expansions[i]
+
                 if #n == 2 then
                     local expX, expY = n[1], n[2]
-                    if expX == -1 then left = minX end
-                    if expX == 1 then right = maxX end
-                    if expY == -1 then top = minY end
-                    if expY == 1 then bottom = maxY end
+
+                    if expX == -1 then left = 0 end
+                    if expX == 1 then right = maxX - minX end
+                    if expY == -1 then top = 0 end
+                    if expY == 1 then bottom = maxY - minY end
                 else
                     error("The number of positions on the expand of a widget are not 2!")
                 end
             end
 
-            -- Recalculate dimensions and positions based on pinned edges
             if left and right then
                 widget.pos.x = left
                 widget.size.x = right - left
@@ -570,9 +582,9 @@ loadFont("default", "gui/fonts/default/BricolageGrotesque.ttf")
 
 -- Panel
 
-function create_panel(x, y, w, h)
+function create_panel(x, y, w, h, init)
     return create_widget(x, y, w, h, true, function(widget)
-        widget.margin = 14
+        widget.margin = 12
         widget.radius = 8
 
         local c = .9
@@ -587,15 +599,22 @@ function create_panel(x, y, w, h)
 
             love.graphics.rectangle("line", x, y, w, h, widget.radius)
         end
+        
+        function widget.mousePressed(_x, _y, _button)
+            widget.selectMe()
+        end
 
+        if init then
+            widget = init(widget)
+        end
         return widget
     end)
 end
 
-function create_button(x, y, w, h, text, onPressed, onReleased)
+function create_button(x, y, w, h, text, onPressed, onReleased, init)
     return create_widget(x, y, w, h, true, function(widget)
         widget.margin = 4
-        widget.radius = 6
+        widget.radius = 8
 
         widget.custom_onPressed = onPressed or function () end
         widget.custom_onReleased = onReleased or function () end
@@ -661,11 +680,73 @@ function create_button(x, y, w, h, text, onPressed, onReleased)
         end
 
         function widget.mousePressed(_x, _y, _button)
-            --widget.label.color = {1,0,0,1}
+            widget.selectMe()
         end
 
         function widget.mouseReleased(_x, _y, _button)
-            --widget.label.color = {0,0,1,1}
+        end
+
+        if init then
+            widget = init(widget)
+        end
+
+        return widget
+    end)
+end
+
+function create_textarea(x, y, w, h)
+    return create_panel(x, y, w, h, function (widget)
+        widget.margin = 4
+        widget.padding = 4
+        widget.color = {0.31, 0.31, 0.36, 1}
+
+        widget.label = {
+            color = {.96, .96, .96, 1},
+            text = {
+                "This is line 1!",
+                "This is line 2!",
+                "This is line 3!",
+                "This is line 4!",
+                "This is line 5!",
+                "This is line 6!",
+                "This is line 7!",
+                "This is line 8!",
+                "This is line 9!",
+                "This is line 10!"
+            }, -- Lines
+            textWhole = nil
+        }
+
+        function widget.mergeLines()
+            local whole = ""
+            for i=1,#widget.label.text do
+                whole = whole..widget.label.text[i].."\n"
+            end
+
+            widget.label.textWhole = whole
+        end
+        
+        function widget.draw()
+            local x, y = widget.getContentPos()
+            local w, h = widget.getContentSize()
+
+            setColFT(widget.color)
+            love.graphics.rectangle("fill", x, y, w, h, widget.radius)
+
+            love.graphics.rectangle("line", x, y, w, h, widget.radius)
+
+            setColFT(widget.label.color)
+            local text = getText("default", 18, widget.label.textWhole)
+
+            drawText(text, x+widget.padding, y+widget.padding)
+        end
+
+        function widget.update()
+            widget.mergeLines()
+        end
+
+        function widget.mousePressed(_x, _y, _button)
+            widget.selectMe()
         end
 
         return widget

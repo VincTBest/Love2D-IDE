@@ -1,7 +1,7 @@
 -- Love2D IDE
 require("gui")
 
-local windowW = 800
+local windowW = 1200
 local windowH = 600
 
 local testPanel = create_panel(0, 0, windowW, windowH)
@@ -10,6 +10,9 @@ testPanel.setExpand({ {-1, -1}, {1, 1} })
 
 local testButton = testPanel.add(create_button(16, 16, 512, 48, "Press the arrows"))
 testButton.setAnchor(-1, -1)
+
+local testTextarea = testPanel.add(create_textarea(0, 0, 512, 512))
+testTextarea.setAnchor(1, -1)
 
 function love.load()
     love.window.setTitle("LoveIDE")

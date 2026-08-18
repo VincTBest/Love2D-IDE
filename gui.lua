@@ -94,6 +94,35 @@ function pointInRect(px, py, rx, ry, width, height)
     return px >= rx and px <= rx + width and py >= ry and py <= ry + height
 end
 
+function cToHover(n, m)
+    local m = m or 60
+    m = m/50
+
+    local str = string.format("%.3f", n)
+    local decimals = str:match("%.(%d+)")
+    
+    local d1 = tonumber(decimals:sub(1,1))
+    local d2 = tonumber(decimals:sub(2,2))
+    local d3 = tonumber(decimals:sub(3,3))
+    
+    local digitSum = d1 + d2 + d3
+    
+    local addedValue = (2 * digitSum * m) - 6
+    
+    local baseInt = tonumber(decimals)
+    local resultInt = baseInt + addedValue
+    
+    return resultInt / 1000
+end
+
+function cFTtoHover(t, m)
+    local n1 = cToHover(t[1], m)
+    local n2 = cToHover(t[2], m)
+    local n3 = cToHover(t[3], m)
+
+    return {n1, n2, n3, t[4]}
+end
+
 -- Widgets
 local widgets = {}
 
@@ -254,7 +283,7 @@ function create_widget(x, y, xSize, ySize, addToGlobal, init, eInit)
 
     function widget.configure(table)
         local newWidget = table
-        for k, v in widget do
+        for k, v in pairs(widget) do
             if not newWidget[k] then
                 newWidget[k] = v -- Keeps old unchanged values
             end
@@ -556,28 +585,51 @@ function create_panel(x, y, w, h)
     end)
 end
 
-function create_button(x, y, w, h, text)
+function create_button(x, y, w, h, text, onPressed, onReleased)
     return create_widget(x, y, w, h, true, function(widget)
         widget.margin = 4
         widget.radius = 6
+
+        widget.custom_onPressed = onPressed or function () end
+        widget.custom_onReleased = onReleased or function () end
 
         widget.label = {
             color = {.96, .96, .96, 1},
             text = text or "Hello, world!",
         }
 
-        widget.color = {0.235, 0.416, 0.78, 1}
-        widget.oColor = {0.161, 0.329, 0.761, 1}
+        widget.mouseDown = false
+
+        widget.colorIndex = 1
+
+        local cPrimaryDefault = {0.235, 0.416, 0.78, 1}
+        local cPrimaryHover = cFTtoHover(cPrimaryDefault)
+
+        widget.colors = {
+            cPrimaryDefault,
+            cPrimaryHover
+        }
+
+        local cBorderDefault = {0.161, 0.329, 0.761, 1}
+        local cBorderHover = cFTtoHover(cBorderDefault)
+
+        widget.border = true
+        widget.bColors = {
+            cBorderDefault,
+            cBorderHover
+        }
 
         function widget.draw()
             local x, y = widget.getContentPos()
             local w, h = widget.getContentSize()
 
-            setColFT(widget.color)
+            setColFT(widget.colors[widget.colorIndex])
             love.graphics.rectangle("fill", x, y, w, h, widget.radius)
-
-            setColFT(widget.oColor)
-            love.graphics.rectangle("line", x, y, w, h, widget.radius)
+            
+            if widget.border then
+                setColFT(widget.bColors[widget.colorIndex])
+            end
+            love.graphics.rectangle("line", x, y, w, h, widget.radius) -- Smooth edges
 
             setColFT(widget.label.color)
             local text = getText("default", 20, widget.label.text)
@@ -586,12 +638,27 @@ function create_button(x, y, w, h, text)
             drawText(text, textX, textY)
         end
 
+        function widget.update()
+            widget.mouseDown = love.mouse.isDown(1)
+
+            local mx, my = love.mouse.getPosition()
+            local x, y = widget.getContentPos()
+            local w, h = widget.getContentSize()
+            widget.mouseHover = pointInRect(mx, my, x, y, w, h)
+
+            if widget.mouseHover then
+                widget.colorIndex = 2
+            else
+                widget.colorIndex = 1
+            end
+        end
+
         function widget.mousePressed(_x, _y, _button)
-            widget.label.color = {1,0,0,1}
+            --widget.label.color = {1,0,0,1}
         end
 
         function widget.mouseReleased(_x, _y, _button)
-            widget.label.color = {0,0,1,1}
+            --widget.label.color = {0,0,1,1}
         end
 
         return widget

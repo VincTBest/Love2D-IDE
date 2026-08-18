@@ -123,6 +123,8 @@ function cFTtoHover(t, m)
     return {n1, n2, n3, t[4]}
 end
 
+function nilFunc() end
+
 -- Widgets
 local widgets = {}
 
@@ -288,12 +290,15 @@ function create_widget(x, y, xSize, ySize, addToGlobal, init, eInit)
                 newWidget[k] = v -- Keeps old unchanged values
             end
         end
+        widget = newWidget
     end
 
     -- Do not call.
     function widget.do_draw()
         if widget.visible then
-            widget.draw()
+            if type(widget.draw) == "function" then
+                widget.draw()
+            end
             for i=1,#widget.children do
                 local child = widget.children[i]
                 if child.doInGlobal.draw then
@@ -305,12 +310,14 @@ function create_widget(x, y, xSize, ySize, addToGlobal, init, eInit)
 
     function widget.do_update()
         if widget.enabled then
-            widget.update()
+            if type(widget.update) == "function" then
+                widget.update()
+            end
             
-            if tick % 30 == 0 or tick == 0 then
+            if tick % 30 == 0 or tick == 0 and type(widget.update30) == "function" then
                 widget.update30()
             end
-            if tick % 10 == 0 or tick == 0 then
+            if tick % 10 == 0 or tick == 0 and type(widget.update10) == "function" then
                 widget.update10()
                 if widget.doInGlobal.perfectCornerRadius then
                     widget.do_perfectCornerRadius()
